@@ -29,7 +29,7 @@ static constexpr auto sqrt2 = 1.41421356237309504880;
 // CControl Declaration
 //! @brief base class of all VSTGUI controls
 //-----------------------------------------------------------------------------
-class CControl : public CView, public IFocusDrawing
+class CControl : public CView, public IFocusDrawing, public IPlatformAccessibleControl
 #if VSTGUI_ENABLE_DEPRECATED_METHODS
 , public IDependency
 #endif
@@ -113,7 +113,13 @@ public:
 	VSTGUI_DEPRECATED (static IdStringPtr kMessageValueChanged;)
 	VSTGUI_DEPRECATED (static IdStringPtr kMessageBeginEdit;)
 	VSTGUI_DEPRECATED (static IdStringPtr kMessageEndEdit;)
-	
+
+
+        // accessibility
+    std::string accname = "VSTGUI Control";
+    virtual std::string getAccessibleName() override { return accname; }
+    virtual void setAccessibleName(const std::string &an ) { accname = an; }
+
 	CLASS_METHODS_VIRTUAL(CControl, CView)
 protected:
 	~CControl () noexcept override = default;

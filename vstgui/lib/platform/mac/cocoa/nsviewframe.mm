@@ -23,6 +23,8 @@
 	#import <Carbon/Carbon.h>
 #endif
 
+#include <iostream>
+
 using namespace VSTGUI;
 
 //------------------------------------------------------------------------------------
@@ -48,6 +50,66 @@ static Class viewClass = nullptr;
 - (BOOL) onMouseDown: (NSEvent*) event;
 - (BOOL) onMouseUp: (NSEvent*) event;
 - (BOOL) onMouseMoved: (NSEvent*) event;
+@end
+
+
+// OK I see what they were doing there but that's really now how I want to go. I would rather just, you know,
+// code objective c. So here we go
+@interface VSTGUI_Accesible_NSView : NSView<NSAccessibilityLayoutArea>
+{
+}
+- (NSString *)accessibilityLabel;
+- (NSArray *)accessibilityChildren;
+- (id)accessibilityFocusedUIElement;
+- (NSArray *)accessibilitySelectedChildren;
+@end
+
+@implementation VSTGUI_Accesible_NSView
+- (NSString *)accessibilityLabel
+{
+    IPlatformFrameCallback *fr = getFrame(self);
+    IPlatformAccessibleContainer *ac = dynamic_cast<IPlatformAccessibleContainer *>(fr);
+    if( ac == nullptr )
+    {
+        return @"ERROR: Not a platform container";
+    }
+    else
+    {
+        NSString *s = [NSString stringWithCString:ac->getAccessibleName().c_str() 
+                                         encoding:[NSString defaultCStringEncoding]];
+        return s;
+    }
+}
+
+- (NSArray *)accessibilityChildren
+{
+    IPlatformFrameCallback *fr = getFrame(self);
+    IPlatformAccessibleContainer *ac = dynamic_cast<IPlatformAccessibleContainer *>(fr);
+    if( ac == nullptr )
+    {
+        std::cout << "accChildren failed" << std::endl;
+        return nil;
+    }
+    else
+    {
+        auto kids = ac->getAccessibleChildren();
+        std::cout << "Got this many kids: " << kids.size() << std::endl;
+    }
+    return nil;
+}
+
+- (id)accessibilityFocusedUIElement
+{
+    std::cout << "accFocusedUI" << std::endl;
+    return nil;
+}
+
+- (NSArray *)accessibilitySelectedChildren
+{
+    std::cout << "accSelectedUI" << std::endl;
+    return nil;
+}
+
 @end
 
 //------------------------------------------------------------------------------------
@@ -731,7 +793,7 @@ void NSViewFrame::initClass ()
 		char funcSig[100];
 
 		NSMutableString* viewClassName = [[[NSMutableString alloc] initWithString:@"VSTGUI_NSView"] autorelease];
-		viewClass = generateUniqueClass (viewClassName, [NSView class]);
+		viewClass = generateUniqueClass (viewClassName, [VSTGUI_Accesible_NSView class]);
 		VSTGUI_CHECK_YES(class_addMethod (viewClass, @selector(initWithNSViewFrame:parent:andSize:), IMP (VSTGUI_NSView_Init), "@@:@:^:^:^:"))
 	//	VSTGUI_CHECK_YES(class_addMethod (viewClass, @selector(dealloc), IMP (VSTGUI_NSView_Dealloc), "v@:@:"))
 		VSTGUI_CHECK_YES(class_addMethod (viewClass, @selector(updateTrackingAreas), IMP (VSTGUI_NSView_updateTrackingAreas), "v@:@:"))
@@ -806,6 +868,7 @@ void NSViewFrame::initClass ()
 		}
 
 		VSTGUI_CHECK_YES(class_addIvar (viewClass, "_nsViewFrame", sizeof (void*), (uint8_t)log2(sizeof(void*)), @encode(void*)))
+            
 		objc_registerClassPair (viewClass);
 	}
 }

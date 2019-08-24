@@ -8,6 +8,7 @@
 /// @cond ignore
 
 #include "../vstguifwd.h"
+#include "iplatformaccessible.h"
 
 struct VstKeyCode;
 
@@ -56,6 +57,7 @@ public:
 #if VSTGUI_TOUCH_EVENT_HANDLING
 	virtual void platformOnTouchEvent (ITouchEvent& event) = 0;
 #endif
+
 //------------------------------------------------------------------------------------
 };
 

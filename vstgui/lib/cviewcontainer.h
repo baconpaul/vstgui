@@ -14,6 +14,8 @@
 #include <list>
 #include <memory>
 
+#include "platform/iplatformaccessible.h"
+
 namespace VSTGUI {
 
 /** Message of a view loosing focus (only CTextEdit and COptionMenu send this) */
@@ -50,7 +52,7 @@ private:
 //! @brief Container Class of CView objects
 /// @ingroup containerviews
 //-----------------------------------------------------------------------------
-class CViewContainer : public CView
+class CViewContainer : public CView, public IPlatformAccessibleContainer
 {
 public:
 	using ViewList = std::list<SharedPointer<CView>>;
@@ -105,6 +107,25 @@ public:
 
 	//@}
 
+    // Accessibility API
+    std::string accname = "VSTGUI CViewContainer";
+    virtual std::string getAccessibleName() override { return accname; }
+    virtual void setAccessibleName(const std::string &an ) { accname = an; }
+    virtual std::vector<IPlatformAccessibleElement *> getAccessibleChildren() override
+    {
+        std::vector<IPlatformAccessibleElement *> res;
+        for( auto i=0; i<getNbViews(); ++i )
+        {
+            auto *v = getView(i);
+            auto *ipe  = dynamic_cast<IPlatformAccessibleElement *>(v);
+            if( ipe != nullptr && ipe != this )
+            {
+                res.push_back(ipe);
+            }
+        }
+        return res;
+    }
+    
 	//-----------------------------------------------------------------------------
 	/// @name Background Methods
 	//-----------------------------------------------------------------------------
