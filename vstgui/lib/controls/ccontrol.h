@@ -117,6 +117,7 @@ public:
 
         // accessibility
     std::string accname = "VSTGUI Control";
+    virtual const CRect getAccessibleSize() override { return getViewSize(); }
     virtual std::string getAccessibleName() override { return accname; }
     virtual void setAccessibleName(const std::string &an ) { accname = an; }
 

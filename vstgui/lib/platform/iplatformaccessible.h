@@ -9,6 +9,8 @@ namespace VSTGUI
 
         virtual ~IPlatformAccessibleElement() { }
 
+        virtual const CRect getAccessibleSize() = 0;
+        
         // This is a hack for now...
         virtual void *getAccData() { return ad; }
         virtual void setAccData( void *u ) { ad = u; }
@@ -20,6 +22,7 @@ namespace VSTGUI
     {
     public:
         virtual std::vector<IPlatformAccessibleElement *> getAccessibleChildren() = 0;
+        virtual IPlatformAccessibleElement *getAccessibleFocusChild() = 0;
     };
 
     class IPlatformAccessibleControl : public IPlatformAccessibleElement

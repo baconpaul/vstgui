@@ -24,6 +24,7 @@
 #endif
 
 #include <iostream>
+#import <AppKit/AppKit.h>
 
 using namespace VSTGUI;
 
@@ -52,6 +53,59 @@ static Class viewClass = nullptr;
 - (BOOL) onMouseMoved: (NSEvent*) event;
 @end
 
+@interface VSTGUI_NSAccessibility_Wrapper : NSAccessibilityElement
+{
+    IPlatformAccessibleElement *element;
+    id parent;
+};
+- (id) initWithPlatformElement: (IPlatformAccessibleElement *)el parent: (id)p;
+- (NSString *)accessibilityLabel;
+- (NSRect)accessibilityFrame;
+- (nullable id)accessibilityParent;
+// - (BOOL)isAccessibilityFocused;
+- (NSString *)accessibilityIdentifier;
+@end
+
+@implementation VSTGUI_NSAccessibility_Wrapper
+- (id) initWithPlatformElement: (IPlatformAccessibleElement *)el parent: (id)p;
+{
+    self = [super init];
+    element = el;
+    parent = p;
+    return self;
+}
+
+- (NSString *)accessibilityLabel
+{
+//std::cout << "acclabel " << element->getAccessibleName() << std::endl;
+    NSString *s = [NSString stringWithCString:element->getAccessibleName().c_str() 
+        encoding:[NSString defaultCStringEncoding]];
+    return s;
+  
+}
+- (NSRect)accessibilityFrame
+{
+    CRect sz = element->getAccessibleSize();
+// std::cout << "accessibleFrame called " << sz.top << " " << sz.left << " " << sz.getWidth() << " " << sz.getHeight() << std::endl;
+    return nsRectFromCRect(sz);
+}
+
+- (NSString *)accessibilityIdentifier
+{
+char idbuf[1024];
+sprintf(idbuf, "vstgui_acc_%d", (size_t)element );
+//std::cout << "accID " << idbuf << std::endl;
+NSString *s = [NSString stringWithCString:idbuf
+        encoding:[NSString defaultCStringEncoding]];
+    return s;
+}
+- (id)accessibilityParent
+{
+//std::cout << "accParent" << std::endl;
+    return parent;
+}
+
+@end
 
 // OK I see what they were doing there but that's really now how I want to go. I would rather just, you know,
 // code objective c. So here we go
@@ -93,7 +147,26 @@ static Class viewClass = nullptr;
     else
     {
         auto kids = ac->getAccessibleChildren();
-        std::cout << "Got this many kids: " << kids.size() << std::endl;
+        NSMutableArray *arr = [[NSMutableArray alloc] init];
+        for( auto k : kids )
+        {
+            VSTGUI_NSAccessibility_Wrapper *wr = nullptr;
+            if( k->getAccData() == nullptr )
+            {
+                wr = [[VSTGUI_NSAccessibility_Wrapper alloc] initWithPlatformElement: k parent: self];
+                k->setAccData(wr);
+            }
+            else
+            {
+                wr = (VSTGUI_NSAccessibility_Wrapper *)k->getAccData();
+            }
+            if( wr == nullptr )
+            {
+                std::cout << "WIERD SOFTWARE ERROR" << std::endl;
+            }
+            [arr addObject:wr];
+        }
+        return [arr autorelease];
     }
     return nil;
 }
@@ -101,12 +174,38 @@ static Class viewClass = nullptr;
 - (id)accessibilityFocusedUIElement
 {
     std::cout << "accFocusedUI" << std::endl;
+    IPlatformFrameCallback *fr = getFrame(self);
+    IPlatformAccessibleContainer *ac = dynamic_cast<IPlatformAccessibleContainer *>(fr);
+    if( ac )
+    {
+        auto *k = ac->getAccessibleFocusChild();
+        std::cout << "FOCUS CHILD is " << k << std::endl;
+        if( k )
+        {
+            VSTGUI_NSAccessibility_Wrapper *wr = nullptr;
+            if( k->getAccData() == nullptr )
+            {
+                wr = [[VSTGUI_NSAccessibility_Wrapper alloc] initWithPlatformElement: k];
+                k->setAccData(wr);
+            }
+            else
+            {
+                wr = (VSTGUI_NSAccessibility_Wrapper *)k->getAccData();
+            }
+            if( wr == nullptr )
+            {
+                std::cout << "WIERD SOFTWARE ERROR" << std::endl;
+            }
+            std::cout << "RETURNING A WR from ACCVIEW" << std::endl;
+            return wr;
+        }
+    }
     return nil;
 }
 
 - (NSArray *)accessibilitySelectedChildren
 {
-    std::cout << "accSelectedUI" << std::endl;
+    //std::cout << "accSelectedUI" << std::endl;
     return nil;
 }
 

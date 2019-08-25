@@ -259,6 +259,10 @@ private:
 	void initModalViewSession (ModalViewSession* session);
 	void clearModalViewSessions ();
 
+    virtual IPlatformAccessibleElement *getAccessibleFocusChild() override {
+        return dynamic_cast<IPlatformAccessibleElement *>(getFocusView());
+    }
+
 	struct Impl;
 	Impl* pImpl {nullptr};
 };

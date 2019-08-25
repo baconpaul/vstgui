@@ -109,6 +109,7 @@ public:
 
     // Accessibility API
     std::string accname = "VSTGUI CViewContainer";
+    virtual const CRect getAccessibleSize() override { return getViewSize(); }
     virtual std::string getAccessibleName() override { return accname; }
     virtual void setAccessibleName(const std::string &an ) { accname = an; }
     virtual std::vector<IPlatformAccessibleElement *> getAccessibleChildren() override
@@ -118,12 +119,18 @@ public:
         {
             auto *v = getView(i);
             auto *ipe  = dynamic_cast<IPlatformAccessibleElement *>(v);
-            if( ipe != nullptr && ipe != this )
+            if( v->isVisible()
+                && v->getViewSize().getWidth() > 0
+                && v->getViewSize().getHeight() > 0
+                && ipe != nullptr && ipe != this )
             {
                 res.push_back(ipe);
             }
         }
         return res;
+    }
+    virtual IPlatformAccessibleElement *getAccessibleFocusChild() override {
+        return nullptr;
     }
     
 	//-----------------------------------------------------------------------------
