@@ -9,6 +9,8 @@
 #include "cviewcontainer.h"
 #include "platform/iplatformframecallback.h"
 
+#include <iostream>
+
 namespace VSTGUI {
 
 //----------------------------
@@ -260,6 +262,7 @@ private:
 	void clearModalViewSessions ();
 
     virtual IPlatformAccessibleElement *getAccessibleFocusChild() override {
+        std::cout << "getAccFC " << getFocusView() << std::endl;
         return dynamic_cast<IPlatformAccessibleElement *>(getFocusView());
     }
 
