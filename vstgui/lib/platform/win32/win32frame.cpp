@@ -3,7 +3,6 @@
 // distribution and at http://github.com/steinbergmedia/vstgui/LICENSE
 
 #include "win32frame.h"
-#include <oleacc.h>
 
 #if WINDOWS
 
@@ -21,6 +20,10 @@
 #	include "../../cdropsource.h"
 #	include "../../cgradient.h"
 
+#	include <oleauto.h>
+#	include <oleacc.h>
+#	include <ole2.h>
+
 #	if VSTGUI_OPENGL_SUPPORT
 #		include "win32openglview.h"
 #	endif
@@ -30,9 +33,248 @@
 #		pragma comment(lib, "Shlwapi.lib")
 #	endif
 
+// wx src/msw/ole/access.cpp
+
 namespace VSTGUI {
 
 #	define DEBUG_DRAWING 0
+
+// Accesible Adapter
+
+struct w32IAWrapper : public IAccessible
+{
+	w32IAWrapper (IAccessible* underling) { this->underling = underling; }
+	~w32IAWrapper () { underling->Release (); }
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accParent (
+		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispParent)
+	{
+		printf ("UL GET PARENT\n");
+
+		return underling->get_accParent (ppdispParent);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChildCount (
+		/* [retval][out] */ __RPC__out long* pcountChildren)
+	{
+		auto res = underling->get_accChildCount (pcountChildren);
+
+		printf ("GETACCCHILDCOUNT %d %d\nn", *pcountChildren, res);
+		return res;
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChild (
+		/* [in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispChild)
+	{
+		return underling->get_accChild (varChild, ppdispChild);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accName (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszName)
+	{
+		printf ("Request for GetAccName %d\n", varChild);
+		return underling->get_accName (varChild, pszName);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accValue (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszValue)
+	{
+		return underling->get_accValue (varChild, pszValue);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDescription (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDescription)
+	{
+		return underling->get_accDescription (varChild, pszDescription);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accRole (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out VARIANT* pvarRole)
+	{
+		return underling->get_accRole (varChild, pvarRole);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accState (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out VARIANT* pvarState)
+	{
+		return underling->get_accState (varChild, pvarState);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelp (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszHelp)
+	{
+		return underling->get_accHelp (varChild, pszHelp);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelpTopic (
+		/* [out] */ __RPC__deref_out_opt BSTR* pszHelpFile,
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out long* pidTopic)
+	{
+		return underling->get_accHelpTopic (pszHelpFile, varChild, pidTopic);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszKeyboardShortcut)
+	{
+		return underling->get_accKeyboardShortcut (varChild, pszKeyboardShortcut);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accFocus (
+		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
+	{
+		return underling->get_accFocus (pvarChild);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accSelection (
+		/* [retval][out] */ __RPC__out VARIANT* pvarChildren)
+	{
+		return underling->get_accSelection (pvarChildren);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDefaultAction (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDefaultAction)
+	{
+		return underling->get_accDefaultAction (varChild, pszDefaultAction);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accSelect (
+		/* [in] */ long flagsSelect,
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accSelect (flagsSelect, varChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accLocation (
+		/* [out] */ __RPC__out long* pxLeft,
+		/* [out] */ __RPC__out long* pyTop,
+		/* [out] */ __RPC__out long* pcxWidth,
+		/* [out] */ __RPC__out long* pcyHeight,
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accLocation (pxLeft, pyTop, pcxWidth, pcyHeight, varChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accNavigate (
+		/* [in] */ long navDir,
+		/* [optional][in] */ VARIANT varStart,
+		/* [retval][out] */ __RPC__out VARIANT* pvarEndUpAt)
+	{
+		return underling->accNavigate (navDir, varStart, pvarEndUpAt);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accHitTest (
+		/* [in] */ long xLeft,
+		/* [in] */ long yTop,
+		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
+	{
+		return underling->accHitTest (xLeft, yTop, pvarChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accDoDefaultAction (
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accDoDefaultAction (varChild);
+	}
+
+	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accName (
+		/* [optional][in] */ VARIANT varChild,
+		/* [in] */ __RPC__in BSTR szName)
+	{
+		return underling->put_accName (varChild, szName);
+	}
+
+	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accValue (
+		/* [optional][in] */ VARIANT varChild,
+		/* [in] */ __RPC__in BSTR szValue)
+	{
+		return underling->put_accValue (varChild, szValue);
+	}
+
+	// IDISPATCH
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount (
+		/* [out] */ __RPC__out UINT* pctinfo)
+	{
+		return underling->GetTypeInfoCount (pctinfo);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo (
+		/* [in] */ UINT iTInfo,
+		/* [in] */ LCID lcid,
+		/* [out] */ __RPC__deref_out_opt ITypeInfo** ppTInfo)
+	{
+		return underling->GetTypeInfo (iTInfo, lcid, ppTInfo);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames (
+		/* [in] */ __RPC__in REFIID riid,
+		/* [size_is][in] */ __RPC__in_ecount_full (cNames) LPOLESTR* rgszNames,
+		/* [range][in] */ __RPC__in_range (0, 16384) UINT cNames,
+		/* [in] */ LCID lcid,
+		/* [size_is][out] */ __RPC__out_ecount_full (cNames) DISPID* rgDispId)
+	{
+		return underling->GetIDsOfNames (riid, rgszNames, cNames, lcid, rgDispId);
+	}
+
+	virtual /* [local] */ HRESULT STDMETHODCALLTYPE Invoke (
+		/* [annotation][in] */
+		_In_ DISPID dispIdMember,
+		/* [annotation][in] */
+		_In_ REFIID riid,
+		/* [annotation][in] */
+		_In_ LCID lcid,
+		/* [annotation][in] */
+		_In_ WORD wFlags,
+		/* [annotation][out][in] */
+		_In_ DISPPARAMS* pDispParams,
+		/* [annotation][out] */
+		_Out_opt_ VARIANT* pVarResult,
+		/* [annotation][out] */
+		_Out_opt_ EXCEPINFO* pExcepInfo,
+		/* [annotation][out] */
+		_Out_opt_ UINT* puArgErr)
+	{
+		return underling->Invoke (dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult,
+								  pExcepInfo, puArgErr);
+	}
+
+	// IUNKNOWN
+	HRESULT QueryInterface (REFIID riid, void** ppv)
+	{
+		printf ("QueryInterface\n");
+		fflush (stdout);
+		if (riid == IID_IAccessible || riid == IID_IUnknown || riid == IID_IDispatch)
+		{
+			*ppv = this;
+			AddRef ();
+
+			return S_OK;
+		}
+		else
+		{
+			*ppv = NULL;
+
+			return (HRESULT)E_NOINTERFACE;
+		}
+	}
+
+	std::atomic<ULONG> ref = 0;
+
+	ULONG AddRef () { return 1; }
+
+	ULONG Release () { return 1; }
+
+	IAccessible* underling;
+};
 
 //-----------------------------------------------------------------------------
 static TCHAR gClassName[100];
@@ -756,228 +998,6 @@ static unsigned char translateWinVirtualKey (WPARAM winVKey)
 	return 0;
 }
 
-struct w32IAWrapper : public IAccessible
-{
-	w32IAWrapper (IAccessible* underling) { this->underling = underling; }
-	~w32IAWrapper () { underling->Release (); }
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accParent (
-		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispParent)
-	{
-		printf ("UL GET PARENT\n");
-
-		return underling->get_accParent (ppdispParent);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChildCount (
-		/* [retval][out] */ __RPC__out long* pcountChildren)
-	{
-		auto res = underling->get_accChildCount (pcountChildren);
-
-		printf ("GETACCCHILDCOUNT %d %d\nn", *pcountChildren, res);
-		return res;
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChild (
-		/* [in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispChild)
-	{
-		return underling->get_accChild (varChild, ppdispChild);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accName (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszName)
-	{
-		printf ("Request for GetAccName %d\n", varChild);
-		return underling->get_accName (varChild, pszName);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accValue (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszValue)
-	{
-		return underling->get_accValue (varChild, pszValue);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDescription (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDescription)
-	{
-		return underling->get_accDescription (varChild, pszDescription);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accRole (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__out VARIANT* pvarRole)
-	{
-		return underling->get_accRole (varChild, pvarRole);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accState (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__out VARIANT* pvarState)
-	{
-		return underling->get_accState (varChild, pvarState);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelp (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszHelp)
-	{
-		return underling->get_accHelp (varChild, pszHelp);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelpTopic (
-		/* [out] */ __RPC__deref_out_opt BSTR* pszHelpFile,
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__out long* pidTopic)
-	{
-		return underling->get_accHelpTopic (pszHelpFile, varChild, pidTopic);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszKeyboardShortcut)
-	{
-		return underling->get_accKeyboardShortcut (varChild, pszKeyboardShortcut);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accFocus (
-		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
-	{
-		return underling->get_accFocus (pvarChild);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accSelection (
-		/* [retval][out] */ __RPC__out VARIANT* pvarChildren)
-	{
-		return underling->get_accSelection (pvarChildren);
-	}
-
-	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDefaultAction (
-		/* [optional][in] */ VARIANT varChild,
-		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDefaultAction)
-	{
-		return underling->get_accDefaultAction (varChild, pszDefaultAction);
-	}
-
-	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accSelect (
-		/* [in] */ long flagsSelect,
-		/* [optional][in] */ VARIANT varChild)
-	{
-		return underling->accSelect (flagsSelect, varChild);
-	}
-
-	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accLocation (
-		/* [out] */ __RPC__out long* pxLeft,
-		/* [out] */ __RPC__out long* pyTop,
-		/* [out] */ __RPC__out long* pcxWidth,
-		/* [out] */ __RPC__out long* pcyHeight,
-		/* [optional][in] */ VARIANT varChild)
-	{
-		return underling->accLocation (pxLeft, pyTop, pcxWidth, pcyHeight, varChild);
-	}
-
-	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accNavigate (
-		/* [in] */ long navDir,
-		/* [optional][in] */ VARIANT varStart,
-		/* [retval][out] */ __RPC__out VARIANT* pvarEndUpAt)
-	{
-		return underling->accNavigate (navDir, varStart, pvarEndUpAt);
-	}
-
-	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accHitTest (
-		/* [in] */ long xLeft,
-		/* [in] */ long yTop,
-		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
-	{
-		return underling->accHitTest (xLeft, yTop, pvarChild);
-	}
-
-	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accDoDefaultAction (
-		/* [optional][in] */ VARIANT varChild)
-	{
-		return underling->accDoDefaultAction (varChild);
-	}
-
-	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accName (
-		/* [optional][in] */ VARIANT varChild,
-		/* [in] */ __RPC__in BSTR szName)
-	{
-		return underling->put_accName (varChild, szName);
-	}
-
-	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accValue (
-		/* [optional][in] */ VARIANT varChild,
-		/* [in] */ __RPC__in BSTR szValue)
-	{
-		return underling->put_accValue (varChild, szValue);
-	}
-
-	// IDISPATCH
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount (
-		/* [out] */ __RPC__out UINT* pctinfo)
-	{
-		return underling->GetTypeInfoCount (pctinfo);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo (
-		/* [in] */ UINT iTInfo,
-		/* [in] */ LCID lcid,
-		/* [out] */ __RPC__deref_out_opt ITypeInfo** ppTInfo)
-	{
-		return underling->GetTypeInfo (iTInfo, lcid, ppTInfo);
-	}
-
-	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames (
-		/* [in] */ __RPC__in REFIID riid,
-		/* [size_is][in] */ __RPC__in_ecount_full (cNames) LPOLESTR* rgszNames,
-		/* [range][in] */ __RPC__in_range (0, 16384) UINT cNames,
-		/* [in] */ LCID lcid,
-		/* [size_is][out] */ __RPC__out_ecount_full (cNames) DISPID* rgDispId)
-	{
-		return underling->GetIDsOfNames (riid, rgszNames, cNames, lcid, rgDispId);
-	}
-
-	virtual /* [local] */ HRESULT STDMETHODCALLTYPE Invoke (
-		/* [annotation][in] */
-		_In_ DISPID dispIdMember,
-		/* [annotation][in] */
-		_In_ REFIID riid,
-		/* [annotation][in] */
-		_In_ LCID lcid,
-		/* [annotation][in] */
-		_In_ WORD wFlags,
-		/* [annotation][out][in] */
-		_In_ DISPPARAMS* pDispParams,
-		/* [annotation][out] */
-		_Out_opt_ VARIANT* pVarResult,
-		/* [annotation][out] */
-		_Out_opt_ EXCEPINFO* pExcepInfo,
-		/* [annotation][out] */
-		_Out_opt_ UINT* puArgErr)
-	{
-		return underling->Invoke (dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult,
-								  pExcepInfo, puArgErr);
-	}
-
-	// IUNKNOWN
-
-	STDMETHODIMP QueryInterface (REFIID riid, void** ppv)
-	{
-		return underling->QueryInterface (riid, ppv);
-	};
-	STDMETHODIMP_ (ULONG) AddRef () { return underling->AddRef (); };
-	STDMETHODIMP_ (ULONG) Release ()
-	{
-		underling->AddRef ();
-		return underling->Release ();
-	};
-
-	IAccessible* underling;
-};
-
 //-----------------------------------------------------------------------------
 LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -1012,7 +1032,9 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 			}
 			printf ("UNDER %d\n", under);
 			w32IAWrapper* wrapper = new w32IAWrapper (under);
-			return (LONG_PTR)wrapper;
+			auto res = LresultFromObject (IID_IAccessible, wParam, wrapper);
+			wrapper->AddRef ();
+			return res;
 		}
 	}
 	switch (message)

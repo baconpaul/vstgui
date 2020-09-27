@@ -5,6 +5,7 @@
 #ifndef __win32frame__
 #define __win32frame__
 
+#include <memory>
 #include "../platform_win32.h"
 
 #if WINDOWS
@@ -12,6 +13,8 @@
 #include "../../cframe.h"
 
 namespace VSTGUI {
+
+struct win32VSTGAcc;
 
 //-----------------------------------------------------------------------------
 class Win32Frame : public IPlatformFrame, public IWin32PlatformFrame
@@ -57,6 +60,8 @@ public:
 	PlatformType getPlatformType () const override { return PlatformType::kHWND; }
 	void onFrameClosed () override;
 	Optional<UTF8String> convertCurrentKeyEventToText () override { return {}; }
+
+	// SharedPointer<win32VSTGAcc> acc;
 
 	LONG_PTR WINAPI proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 //-----------------------------------------------------------------------------
