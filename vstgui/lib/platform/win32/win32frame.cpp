@@ -1,44 +1,49 @@
-// This file is part of VSTGUI. It is subject to the license terms 
+// This file is part of VSTGUI. It is subject to the license terms
 // in the LICENSE file found in the top-level directory of this
 // distribution and at http://github.com/steinbergmedia/vstgui/LICENSE
 
 #include "win32frame.h"
+#include <oleacc.h>
 
 #if WINDOWS
 
-#include <commctrl.h>
-#include <cmath>
-#include <windowsx.h>
-#include "direct2d/d2ddrawcontext.h"
-#include "direct2d/d2dbitmap.h"
-#include "direct2d/d2dgraphicspath.h"
-#include "win32textedit.h"
-#include "win32optionmenu.h"
-#include "win32support.h"
-#include "win32datapackage.h"
-#include "win32dragging.h"
-#include "../../cdropsource.h"
-#include "../../cgradient.h"
+#	include <commctrl.h>
+#	include <cmath>
+#	include <windowsx.h>
+#	include "direct2d/d2ddrawcontext.h"
+#	include "direct2d/d2dbitmap.h"
+#	include "direct2d/d2dgraphicspath.h"
+#	include "win32textedit.h"
+#	include "win32optionmenu.h"
+#	include "win32support.h"
+#	include "win32datapackage.h"
+#	include "win32dragging.h"
+#	include "../../cdropsource.h"
+#	include "../../cgradient.h"
 
-#if VSTGUI_OPENGL_SUPPORT
-#include "win32openglview.h"
-#endif
+#	if VSTGUI_OPENGL_SUPPORT
+#		include "win32openglview.h"
+#	endif
 
 // windows libraries VSTGUI depends on
-#ifdef _MSC_VER
-#pragma comment(lib, "Shlwapi.lib")
-#endif
+#	ifdef _MSC_VER
+#		pragma comment(lib, "Shlwapi.lib")
+#	endif
 
 namespace VSTGUI {
 
-#define DEBUG_DRAWING	0
+#	define DEBUG_DRAWING 0
 
 //-----------------------------------------------------------------------------
 static TCHAR gClassName[100];
-static bool bSwapped_mouse_buttons = false; 
+static bool bSwapped_mouse_buttons = false;
 
 //-----------------------------------------------------------------------------
-IPlatformFrame* IPlatformFrame::createPlatformFrame (IPlatformFrameCallback* frame, const CRect& size, void* parent, PlatformType parentType, IPlatformFrameConfig* config)
+IPlatformFrame* IPlatformFrame::createPlatformFrame (IPlatformFrameCallback* frame,
+													 const CRect& size,
+													 void* parent,
+													 PlatformType parentType,
+													 IPlatformFrameConfig* config)
 {
 	return new Win32Frame (frame, size, (HWND)parent, parentType);
 }
@@ -67,19 +72,22 @@ static bool isParentLayered (HWND parent)
 }
 
 //-----------------------------------------------------------------------------
-Win32Frame::Win32Frame (IPlatformFrameCallback* frame, const CRect& size, HWND parent, PlatformType parentType)
-: IPlatformFrame (frame)
-, parentWindow (parent)
-, windowHandle (0)
-, tooltipWindow (0)
-, oldFocusWindow (0)
-, backBuffer (0)
-, deviceContext (0)
-, inPaint (false)
-, mouseInside (false)
-, updateRegionList (0)
-, updateRegionListSize (0)
-, isTouchActive(false)
+Win32Frame::Win32Frame (IPlatformFrameCallback* frame,
+						const CRect& size,
+						HWND parent,
+						PlatformType parentType)
+	: IPlatformFrame (frame)
+	, parentWindow (parent)
+	, windowHandle (0)
+	, tooltipWindow (0)
+	, oldFocusWindow (0)
+	, backBuffer (0)
+	, deviceContext (0)
+	, inPaint (false)
+	, mouseInside (false)
+	, updateRegionList (0)
+	, updateRegionListSize (0)
+	, isTouchActive (false)
 {
 	useD2D ();
 	if (parentType == PlatformType::kHWNDTopLevel)
@@ -93,14 +101,14 @@ Win32Frame::Win32Frame (IPlatformFrameCallback* frame, const CRect& size, HWND p
 		initWindowClass ();
 
 		DWORD style = isParentLayered (parent) ? WS_EX_TRANSPARENT : 0;
-		windowHandle = CreateWindowEx (style, gClassName, TEXT("Window"),
-										WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 
-										0, 0, (int)size.getWidth (), (int)size.getHeight (), 
-										parentWindow, NULL, GetInstance (), NULL);
+		windowHandle = CreateWindowEx (style, gClassName, TEXT ("Window"),
+									   WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0,
+									   0, (int)size.getWidth (), (int)size.getHeight (),
+									   parentWindow, NULL, GetInstance (), NULL);
 
 		if (windowHandle)
 		{
-			SetWindowLongPtr (windowHandle, GWLP_USERDATA, (__int3264)(LONG_PTR)this);
+			SetWindowLongPtr (windowHandle, GWLP_USERDATA, (__int3264) (LONG_PTR)this);
 			RegisterDragDrop (windowHandle, new CDropTarget (this));
 		}
 	}
@@ -144,25 +152,25 @@ void Win32Frame::initWindowClass ()
 	{
 		OleInitialize (0);
 
-		VSTGUI_SPRINTF (gClassName, TEXT("VSTGUI%p"), GetInstance ());
-		
-		WNDCLASS windowClass;
-		windowClass.style = CS_GLOBALCLASS | CS_DBLCLKS;//|CS_OWNDC; // add Private-DC constant 
+		VSTGUI_SPRINTF (gClassName, TEXT ("VSTGUI%p"), GetInstance ());
 
-		windowClass.lpfnWndProc = WindowProc; 
-		windowClass.cbClsExtra  = 0; 
-		windowClass.cbWndExtra  = 0; 
-		windowClass.hInstance   = GetInstance ();
-		windowClass.hIcon = 0; 
+		WNDCLASS windowClass;
+		windowClass.style = CS_GLOBALCLASS | CS_DBLCLKS; //|CS_OWNDC; // add Private-DC constant
+
+		windowClass.lpfnWndProc = WindowProc;
+		windowClass.cbClsExtra = 0;
+		windowClass.cbWndExtra = 0;
+		windowClass.hInstance = GetInstance ();
+		windowClass.hIcon = 0;
 
 		windowClass.hCursor = LoadCursor (NULL, IDC_ARROW);
-		#if DEBUG_DRAWING
+#	if DEBUG_DRAWING
 		windowClass.hbrBackground = GetSysColorBrush (COLOR_BTNFACE);
-		#else
+#	else
 		windowClass.hbrBackground = 0;
-		#endif
-		windowClass.lpszMenuName  = 0; 
-		windowClass.lpszClassName = gClassName; 
+#	endif
+		windowClass.lpszMenuName = 0;
+		windowClass.lpszClassName = gClassName;
 		RegisterClass (&windowClass);
 
 		bSwapped_mouse_buttons = GetSystemMetrics (SM_SWAPBUTTON) > 0;
@@ -185,22 +193,19 @@ void Win32Frame::initTooltip ()
 {
 	if (tooltipWindow == 0 && windowHandle)
 	{
-		TOOLINFO    ti;
+		TOOLINFO ti;
 		// Create the ToolTip control.
-		HWND hwndTT = CreateWindow (TOOLTIPS_CLASS, TEXT(""),
-							  WS_POPUP,
-							  CW_USEDEFAULT, CW_USEDEFAULT,
-							  CW_USEDEFAULT, CW_USEDEFAULT,
-							  NULL, (HMENU)NULL, GetInstance (),
-							  NULL);
+		HWND hwndTT =
+			CreateWindow (TOOLTIPS_CLASS, TEXT (""), WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT,
+						  CW_USEDEFAULT, CW_USEDEFAULT, NULL, (HMENU)NULL, GetInstance (), NULL);
 
 		// Prepare TOOLINFO structure for use as tracking ToolTip.
-		ti.cbSize = sizeof(TOOLINFO);
+		ti.cbSize = sizeof (TOOLINFO);
 		ti.uFlags = TTF_SUBCLASS;
-		ti.hwnd   = (HWND)windowHandle;
-		ti.uId    = (UINT)0;
-		ti.hinst  = GetInstance ();
-		ti.lpszText  = const_cast<TCHAR*> (TEXT("This is a tooltip"));
+		ti.hwnd = (HWND)windowHandle;
+		ti.uId = (UINT)0;
+		ti.hinst = GetInstance ();
+		ti.lpszText = const_cast<TCHAR*> (TEXT ("This is a tooltip"));
 		ti.rect.left = ti.rect.top = ti.rect.bottom = ti.rect.right = 0;
 
 		// Add the tool to the control
@@ -218,10 +223,10 @@ void Win32Frame::initTooltip ()
 HWND Win32Frame::getOuterWindow () const
 {
 	int diffWidth, diffHeight;
-	RECT  rctTempWnd, rctPluginWnd;
-	HWND  hTempWnd = windowHandle;
+	RECT rctTempWnd, rctPluginWnd;
+	HWND hTempWnd = windowHandle;
 	GetWindowRect (hTempWnd, &rctPluginWnd);
-    
+
 	while (hTempWnd != NULL)
 	{
 		// Looking for caption bar
@@ -231,22 +236,23 @@ HWND Win32Frame::getOuterWindow () const
 		// Looking for last parent
 		if (!GetParent (hTempWnd))
 			return hTempWnd;
-    
+
 		// get difference between plugin-window and current parent
 		GetWindowRect (GetParent (hTempWnd), &rctTempWnd);
-	    
-		diffWidth  = (rctTempWnd.right - rctTempWnd.left) - (rctPluginWnd.right - rctPluginWnd.left);
-		diffHeight = (rctTempWnd.bottom - rctTempWnd.top) - (rctPluginWnd.bottom - rctPluginWnd.top);
-		
+
+		diffWidth = (rctTempWnd.right - rctTempWnd.left) - (rctPluginWnd.right - rctPluginWnd.left);
+		diffHeight =
+			(rctTempWnd.bottom - rctTempWnd.top) - (rctPluginWnd.bottom - rctPluginWnd.top);
+
 		// Looking for size mismatch
 		if ((abs (diffWidth) > 60) || (abs (diffHeight) > 60)) // parent belongs to host
 			return (hTempWnd);
 
 		if (diffWidth < 0)
 			diffWidth = 0;
-        if (diffHeight < 0)
-			diffHeight = 0; 
-		
+		if (diffHeight < 0)
+			diffHeight = 0;
+
 		// get the next parent window
 		hTempWnd = GetParent (hTempWnd);
 	}
@@ -280,7 +286,9 @@ bool Win32Frame::setSize (const CRect& newSize)
 	}
 	if (!parentWindow)
 		return true;
-	SetWindowPos (windowHandle, HWND_TOP, (int)newSize.left, (int)newSize.top, (int)newSize.getWidth (), (int)newSize.getHeight (), SWP_NOZORDER|SWP_NOCOPYBITS|SWP_NOREDRAW|SWP_DEFERERASE);
+	SetWindowPos (windowHandle, HWND_TOP, (int)newSize.left, (int)newSize.top,
+				  (int)newSize.getWidth (), (int)newSize.getHeight (),
+				  SWP_NOZORDER | SWP_NOCOPYBITS | SWP_NOREDRAW | SWP_DEFERERASE);
 	invalidRect (newSize);
 	return true;
 }
@@ -326,11 +334,11 @@ bool Win32Frame::getCurrentMouseButtons (CButtonState& buttons) const
 		buttons |= kMButton;
 	if (GetAsyncKeyState (VK_RBUTTON) < 0)
 		buttons |= (bSwapped_mouse_buttons ? kLButton : kRButton);
-	if (GetAsyncKeyState (VK_SHIFT)   < 0)
+	if (GetAsyncKeyState (VK_SHIFT) < 0)
 		buttons |= kShift;
 	if (GetAsyncKeyState (VK_CONTROL) < 0)
 		buttons |= kControl;
-	if (GetAsyncKeyState (VK_MENU)    < 0)
+	if (GetAsyncKeyState (VK_MENU) < 0)
 		buttons |= kAlt;
 	return true;
 }
@@ -370,7 +378,7 @@ bool Win32Frame::setMouseCursor (CCursorType type)
 			break;
 	}
 	lastSetCursor = type;
-	SetClassLongPtr (getPlatformWindow (), GCLP_HCURSOR, (__int3264)(LONG_PTR)(cursor));
+	SetClassLongPtr (getPlatformWindow (), GCLP_HCURSOR, (__int3264) (LONG_PTR) (cursor));
 	return true;
 }
 
@@ -381,7 +389,8 @@ bool Win32Frame::invalidRect (const CRect& rect)
 		return false;
 	if (!rect.isEmpty ())
 	{
-		RECT r = {(LONG)rect.left, (LONG)rect.top, (LONG)ceil (rect.right), (LONG)ceil (rect.bottom)};
+		RECT r = {(LONG)rect.left, (LONG)rect.top, (LONG)ceil (rect.right),
+				  (LONG)ceil (rect.bottom)};
 		InvalidateRect (windowHandle, &r, true);
 	}
 	return true;
@@ -419,7 +428,7 @@ bool Win32Frame::showTooltip (const CRect& rect, const char* utf8Text)
 		rc.right = (LONG)rect.right;
 		rc.bottom = (LONG)rect.bottom;
 		TOOLINFO ti = {0};
-		ti.cbSize = sizeof(TOOLINFO);
+		ti.cbSize = sizeof (TOOLINFO);
 		ti.hwnd = windowHandle;
 		ti.uId = 0;
 		ti.rect = rc;
@@ -440,7 +449,7 @@ bool Win32Frame::hideTooltip ()
 	if (tooltipWindow)
 	{
 		TOOLINFO ti = {0};
-		ti.cbSize = sizeof(TOOLINFO);
+		ti.cbSize = sizeof (TOOLINFO);
 		ti.hwnd = windowHandle;
 		ti.uId = 0;
 		ti.lpszText = 0;
@@ -451,7 +460,8 @@ bool Win32Frame::hideTooltip ()
 }
 
 //-----------------------------------------------------------------------------
-SharedPointer<IPlatformTextEdit> Win32Frame::createPlatformTextEdit (IPlatformTextEditCallback* textEdit)
+SharedPointer<IPlatformTextEdit>
+Win32Frame::createPlatformTextEdit (IPlatformTextEditCallback* textEdit)
 {
 	return owned<IPlatformTextEdit> (new Win32TextEdit (windowHandle, textEdit));
 }
@@ -462,16 +472,18 @@ SharedPointer<IPlatformOptionMenu> Win32Frame::createPlatformOptionMenu ()
 	return owned<IPlatformOptionMenu> (new Win32OptionMenu (windowHandle));
 }
 
-#if VSTGUI_OPENGL_SUPPORT
+#	if VSTGUI_OPENGL_SUPPORT
 //-----------------------------------------------------------------------------
 SharedPointer<IPlatformOpenGLView> Win32Frame::createPlatformOpenGLView ()
 {
 	return owned<IPlatformOpenGLView> (new Win32OpenGLView (this));
 }
-#endif
+#	endif
 
 //-----------------------------------------------------------------------------
-SharedPointer<COffscreenContext> Win32Frame::createOffscreenContext (CCoord width, CCoord height, double scaleFactor)
+SharedPointer<COffscreenContext> Win32Frame::createOffscreenContext (CCoord width,
+																	 CCoord height,
+																	 double scaleFactor)
 {
 	D2DBitmap* bitmap = new D2DBitmap (CPoint (width * scaleFactor, height * scaleFactor));
 	bitmap->setScaleFactor (scaleFactor);
@@ -480,12 +492,14 @@ SharedPointer<COffscreenContext> Win32Frame::createOffscreenContext (CCoord widt
 	return context;
 }
 
-#if VSTGUI_ENABLE_DEPRECATED_METHODS
-class Win32LegacyDragSupport : virtual public DragCallbackAdapter, virtual public NonAtomicReferenceCounted
+#	if VSTGUI_ENABLE_DEPRECATED_METHODS
+class Win32LegacyDragSupport
+	: virtual public DragCallbackAdapter
+	, virtual public NonAtomicReferenceCounted
 {
 public:
 	void dragEnded (IDraggingSession*, CPoint, DragOperation r) final { result = r; }
-	DragOperation result {DragOperation::None};
+	DragOperation result{DragOperation::None};
 };
 
 //------------------------------------------------------------------------------------
@@ -498,17 +512,21 @@ DragResult Win32Frame::doDrag (IDataPackage* source, const CPoint& offset, CBitm
 	{
 		switch (dragSupport.result)
 		{
-			case DragOperation::Copy: return kDragCopied;
-			case DragOperation::Move: return kDragMoved;
-			case DragOperation::None: return kDragRefused;
+			case DragOperation::Copy:
+				return kDragCopied;
+			case DragOperation::Move:
+				return kDragMoved;
+			case DragOperation::None:
+				return kDragRefused;
 		}
 	}
 	return kDragRefused;
 }
-#endif
+#	endif
 
 //-----------------------------------------------------------------------------
-bool Win32Frame::doDrag (const DragDescription& dragDescription, const SharedPointer<IDragCallback>& callback)
+bool Win32Frame::doDrag (const DragDescription& dragDescription,
+						 const SharedPointer<IDragCallback>& callback)
 {
 	Win32DraggingSession session (this);
 	return session.doDrag (dragDescription, callback);
@@ -521,16 +539,17 @@ void Win32Frame::setClipboard (const SharedPointer<IDataPackage>& data)
 	auto hr = OleSetClipboard (dataObject);
 	if (hr != S_OK)
 	{
-#if DEBUG
+#	if DEBUG
 		DebugPrint ("Setting clipboard failed!\n");
-#endif
+#	endif
 	}
 }
 
 //-----------------------------------------------------------------------------
 SharedPointer<IDataPackage> Win32Frame::getClipboard ()
 {
-	IDataObject* dataObject = nullptr;;
+	IDataObject* dataObject = nullptr;
+	;
 	if (OleGetClipboard (&dataObject) != S_OK)
 		return nullptr;
 	return makeOwned<Win32DataPackage> (dataObject);
@@ -553,13 +572,14 @@ void Win32Frame::paint (HWND hwnd)
 	}
 
 	inPaint = true;
-	
+
 	PAINTSTRUCT ps;
 	HDC hdc = BeginPaint (hwnd, &ps);
 
 	if (hdc)
 	{
-		CRect updateRect ((CCoord)ps.rcPaint.left, (CCoord)ps.rcPaint.top, (CCoord)ps.rcPaint.right, (CCoord)ps.rcPaint.bottom);
+		CRect updateRect ((CCoord)ps.rcPaint.left, (CCoord)ps.rcPaint.top, (CCoord)ps.rcPaint.right,
+						  (CCoord)ps.rcPaint.bottom);
 		CRect frameSize;
 		getSize (frameSize);
 		frameSize.offset (-frameSize.left, -frameSize.top);
@@ -579,7 +599,7 @@ void Win32Frame::paint (HWND hwnd)
 					if (updateRegionList)
 						std::free (updateRegionList);
 					updateRegionListSize = len;
-					updateRegionList = (RGNDATA*) std::malloc (updateRegionListSize);
+					updateRegionList = (RGNDATA*)std::malloc (updateRegionListSize);
 				}
 				GetRegionData (rgn, len, updateRegionList);
 				if (updateRegionList->rdh.nCount > 0)
@@ -604,7 +624,8 @@ void Win32Frame::paint (HWND hwnd)
 			{
 				deviceContext->beginDraw ();
 				deviceContext->clearRect (updateRect);
-				backBuffer->copyFrom (deviceContext, updateRect, CPoint (updateRect.left, updateRect.top));
+				backBuffer->copyFrom (deviceContext, updateRect,
+									  CPoint (updateRect.left, updateRect.top));
 				deviceContext->endDraw ();
 			}
 		}
@@ -612,7 +633,7 @@ void Win32Frame::paint (HWND hwnd)
 
 	EndPaint (hwnd, &ps);
 	DeleteObject (rgn);
-	
+
 	inPaint = false;
 }
 
@@ -620,65 +641,342 @@ static unsigned char translateWinVirtualKey (WPARAM winVKey)
 {
 	switch (winVKey)
 	{
-		case VK_BACK: return VKEY_BACK;
-		case VK_TAB: return VKEY_TAB;
-		case VK_CLEAR: return VKEY_CLEAR;
-		case VK_RETURN: return VKEY_RETURN;
-		case VK_PAUSE: return VKEY_PAUSE;
-		case VK_ESCAPE: return VKEY_ESCAPE;
-		case VK_SPACE: return VKEY_SPACE;
-// TODO:		case VK_NEXT: return VKEY_NEXT;
-		case VK_END: return VKEY_END;
-		case VK_HOME: return VKEY_HOME;
-		case VK_LEFT: return VKEY_LEFT;
-		case VK_RIGHT: return VKEY_RIGHT;
-		case VK_UP: return VKEY_UP;
-		case VK_DOWN: return VKEY_DOWN;
-		case VK_PRIOR: return VKEY_PAGEUP;
-		case VK_NEXT: return VKEY_PAGEDOWN;
-		case VK_SELECT: return VKEY_SELECT;
-		case VK_PRINT: return VKEY_PRINT;
-		case VK_SNAPSHOT: return VKEY_SNAPSHOT;
-		case VK_INSERT: return VKEY_INSERT;
-		case VK_DELETE: return VKEY_DELETE;
-		case VK_HELP: return VKEY_HELP;
-		case VK_NUMPAD0: return VKEY_NUMPAD0;
-		case VK_NUMPAD1: return VKEY_NUMPAD1;
-		case VK_NUMPAD2: return VKEY_NUMPAD2;
-		case VK_NUMPAD3: return VKEY_NUMPAD3;
-		case VK_NUMPAD4: return VKEY_NUMPAD4;
-		case VK_NUMPAD5: return VKEY_NUMPAD5;
-		case VK_NUMPAD6: return VKEY_NUMPAD6;
-		case VK_NUMPAD7: return VKEY_NUMPAD7;
-		case VK_NUMPAD8: return VKEY_NUMPAD8;
-		case VK_NUMPAD9: return VKEY_NUMPAD9;
-		case VK_MULTIPLY: return VKEY_MULTIPLY;
-		case VK_ADD: return VKEY_ADD;
-		case VK_SEPARATOR: return VKEY_SEPARATOR;
-		case VK_SUBTRACT: return VKEY_SUBTRACT;
-		case VK_DECIMAL: return VKEY_DECIMAL;
-		case VK_DIVIDE: return VKEY_DIVIDE;
-		case VK_F1: return VKEY_F1;
-		case VK_F2: return VKEY_F2;
-		case VK_F3: return VKEY_F3;
-		case VK_F4: return VKEY_F4;
-		case VK_F5: return VKEY_F5;
-		case VK_F6: return VKEY_F6;
-		case VK_F7: return VKEY_F7;
-		case VK_F8: return VKEY_F8;
-		case VK_F9: return VKEY_F9;
-		case VK_F10: return VKEY_F10;
-		case VK_F11: return VKEY_F11;
-		case VK_F12: return VKEY_F12;
-		case VK_NUMLOCK: return VKEY_NUMLOCK;
-		case VK_SCROLL: return VKEY_SCROLL;
-		case VK_SHIFT: return VKEY_SHIFT;
-		case VK_CONTROL: return VKEY_CONTROL;
-		case VK_MENU: return VKEY_ALT;
-		case VKEY_EQUALS: return VKEY_EQUALS;
+		case VK_BACK:
+			return VKEY_BACK;
+		case VK_TAB:
+			return VKEY_TAB;
+		case VK_CLEAR:
+			return VKEY_CLEAR;
+		case VK_RETURN:
+			return VKEY_RETURN;
+		case VK_PAUSE:
+			return VKEY_PAUSE;
+		case VK_ESCAPE:
+			return VKEY_ESCAPE;
+		case VK_SPACE:
+			return VKEY_SPACE;
+			// TODO:		case VK_NEXT: return VKEY_NEXT;
+		case VK_END:
+			return VKEY_END;
+		case VK_HOME:
+			return VKEY_HOME;
+		case VK_LEFT:
+			return VKEY_LEFT;
+		case VK_RIGHT:
+			return VKEY_RIGHT;
+		case VK_UP:
+			return VKEY_UP;
+		case VK_DOWN:
+			return VKEY_DOWN;
+		case VK_PRIOR:
+			return VKEY_PAGEUP;
+		case VK_NEXT:
+			return VKEY_PAGEDOWN;
+		case VK_SELECT:
+			return VKEY_SELECT;
+		case VK_PRINT:
+			return VKEY_PRINT;
+		case VK_SNAPSHOT:
+			return VKEY_SNAPSHOT;
+		case VK_INSERT:
+			return VKEY_INSERT;
+		case VK_DELETE:
+			return VKEY_DELETE;
+		case VK_HELP:
+			return VKEY_HELP;
+		case VK_NUMPAD0:
+			return VKEY_NUMPAD0;
+		case VK_NUMPAD1:
+			return VKEY_NUMPAD1;
+		case VK_NUMPAD2:
+			return VKEY_NUMPAD2;
+		case VK_NUMPAD3:
+			return VKEY_NUMPAD3;
+		case VK_NUMPAD4:
+			return VKEY_NUMPAD4;
+		case VK_NUMPAD5:
+			return VKEY_NUMPAD5;
+		case VK_NUMPAD6:
+			return VKEY_NUMPAD6;
+		case VK_NUMPAD7:
+			return VKEY_NUMPAD7;
+		case VK_NUMPAD8:
+			return VKEY_NUMPAD8;
+		case VK_NUMPAD9:
+			return VKEY_NUMPAD9;
+		case VK_MULTIPLY:
+			return VKEY_MULTIPLY;
+		case VK_ADD:
+			return VKEY_ADD;
+		case VK_SEPARATOR:
+			return VKEY_SEPARATOR;
+		case VK_SUBTRACT:
+			return VKEY_SUBTRACT;
+		case VK_DECIMAL:
+			return VKEY_DECIMAL;
+		case VK_DIVIDE:
+			return VKEY_DIVIDE;
+		case VK_F1:
+			return VKEY_F1;
+		case VK_F2:
+			return VKEY_F2;
+		case VK_F3:
+			return VKEY_F3;
+		case VK_F4:
+			return VKEY_F4;
+		case VK_F5:
+			return VKEY_F5;
+		case VK_F6:
+			return VKEY_F6;
+		case VK_F7:
+			return VKEY_F7;
+		case VK_F8:
+			return VKEY_F8;
+		case VK_F9:
+			return VKEY_F9;
+		case VK_F10:
+			return VKEY_F10;
+		case VK_F11:
+			return VKEY_F11;
+		case VK_F12:
+			return VKEY_F12;
+		case VK_NUMLOCK:
+			return VKEY_NUMLOCK;
+		case VK_SCROLL:
+			return VKEY_SCROLL;
+		case VK_SHIFT:
+			return VKEY_SHIFT;
+		case VK_CONTROL:
+			return VKEY_CONTROL;
+		case VK_MENU:
+			return VKEY_ALT;
+		case VKEY_EQUALS:
+			return VKEY_EQUALS;
 	}
 	return 0;
 }
+
+struct w32IAWrapper : public IAccessible
+{
+	w32IAWrapper (IAccessible* underling) { this->underling = underling; }
+	~w32IAWrapper () { underling->Release (); }
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accParent (
+		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispParent)
+	{
+		printf ("UL GET PARENT\n");
+
+		return underling->get_accParent (ppdispParent);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChildCount (
+		/* [retval][out] */ __RPC__out long* pcountChildren)
+	{
+		auto res = underling->get_accChildCount (pcountChildren);
+
+		printf ("GETACCCHILDCOUNT %d %d\nn", *pcountChildren, res);
+		return res;
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accChild (
+		/* [in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt IDispatch** ppdispChild)
+	{
+		return underling->get_accChild (varChild, ppdispChild);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accName (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszName)
+	{
+		printf ("Request for GetAccName %d\n", varChild);
+		return underling->get_accName (varChild, pszName);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accValue (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszValue)
+	{
+		return underling->get_accValue (varChild, pszValue);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDescription (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDescription)
+	{
+		return underling->get_accDescription (varChild, pszDescription);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accRole (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out VARIANT* pvarRole)
+	{
+		return underling->get_accRole (varChild, pvarRole);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accState (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out VARIANT* pvarState)
+	{
+		return underling->get_accState (varChild, pvarState);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelp (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszHelp)
+	{
+		return underling->get_accHelp (varChild, pszHelp);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accHelpTopic (
+		/* [out] */ __RPC__deref_out_opt BSTR* pszHelpFile,
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__out long* pidTopic)
+	{
+		return underling->get_accHelpTopic (pszHelpFile, varChild, pidTopic);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszKeyboardShortcut)
+	{
+		return underling->get_accKeyboardShortcut (varChild, pszKeyboardShortcut);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accFocus (
+		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
+	{
+		return underling->get_accFocus (pvarChild);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accSelection (
+		/* [retval][out] */ __RPC__out VARIANT* pvarChildren)
+	{
+		return underling->get_accSelection (pvarChildren);
+	}
+
+	virtual /* [id][propget][hidden] */ HRESULT STDMETHODCALLTYPE get_accDefaultAction (
+		/* [optional][in] */ VARIANT varChild,
+		/* [retval][out] */ __RPC__deref_out_opt BSTR* pszDefaultAction)
+	{
+		return underling->get_accDefaultAction (varChild, pszDefaultAction);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accSelect (
+		/* [in] */ long flagsSelect,
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accSelect (flagsSelect, varChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accLocation (
+		/* [out] */ __RPC__out long* pxLeft,
+		/* [out] */ __RPC__out long* pyTop,
+		/* [out] */ __RPC__out long* pcxWidth,
+		/* [out] */ __RPC__out long* pcyHeight,
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accLocation (pxLeft, pyTop, pcxWidth, pcyHeight, varChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accNavigate (
+		/* [in] */ long navDir,
+		/* [optional][in] */ VARIANT varStart,
+		/* [retval][out] */ __RPC__out VARIANT* pvarEndUpAt)
+	{
+		return underling->accNavigate (navDir, varStart, pvarEndUpAt);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accHitTest (
+		/* [in] */ long xLeft,
+		/* [in] */ long yTop,
+		/* [retval][out] */ __RPC__out VARIANT* pvarChild)
+	{
+		return underling->accHitTest (xLeft, yTop, pvarChild);
+	}
+
+	virtual /* [id][hidden] */ HRESULT STDMETHODCALLTYPE accDoDefaultAction (
+		/* [optional][in] */ VARIANT varChild)
+	{
+		return underling->accDoDefaultAction (varChild);
+	}
+
+	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accName (
+		/* [optional][in] */ VARIANT varChild,
+		/* [in] */ __RPC__in BSTR szName)
+	{
+		return underling->put_accName (varChild, szName);
+	}
+
+	virtual /* [id][propput][hidden] */ HRESULT STDMETHODCALLTYPE put_accValue (
+		/* [optional][in] */ VARIANT varChild,
+		/* [in] */ __RPC__in BSTR szValue)
+	{
+		return underling->put_accValue (varChild, szValue);
+	}
+
+	// IDISPATCH
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfoCount (
+		/* [out] */ __RPC__out UINT* pctinfo)
+	{
+		return underling->GetTypeInfoCount (pctinfo);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetTypeInfo (
+		/* [in] */ UINT iTInfo,
+		/* [in] */ LCID lcid,
+		/* [out] */ __RPC__deref_out_opt ITypeInfo** ppTInfo)
+	{
+		return underling->GetTypeInfo (iTInfo, lcid, ppTInfo);
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetIDsOfNames (
+		/* [in] */ __RPC__in REFIID riid,
+		/* [size_is][in] */ __RPC__in_ecount_full (cNames) LPOLESTR* rgszNames,
+		/* [range][in] */ __RPC__in_range (0, 16384) UINT cNames,
+		/* [in] */ LCID lcid,
+		/* [size_is][out] */ __RPC__out_ecount_full (cNames) DISPID* rgDispId)
+	{
+		return underling->GetIDsOfNames (riid, rgszNames, cNames, lcid, rgDispId);
+	}
+
+	virtual /* [local] */ HRESULT STDMETHODCALLTYPE Invoke (
+		/* [annotation][in] */
+		_In_ DISPID dispIdMember,
+		/* [annotation][in] */
+		_In_ REFIID riid,
+		/* [annotation][in] */
+		_In_ LCID lcid,
+		/* [annotation][in] */
+		_In_ WORD wFlags,
+		/* [annotation][out][in] */
+		_In_ DISPPARAMS* pDispParams,
+		/* [annotation][out] */
+		_Out_opt_ VARIANT* pVarResult,
+		/* [annotation][out] */
+		_Out_opt_ EXCEPINFO* pExcepInfo,
+		/* [annotation][out] */
+		_Out_opt_ UINT* puArgErr)
+	{
+		return underling->Invoke (dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult,
+								  pExcepInfo, puArgErr);
+	}
+
+	// IUNKNOWN
+
+	STDMETHODIMP QueryInterface (REFIID riid, void** ppv)
+	{
+		return underling->QueryInterface (riid, ppv);
+	};
+	STDMETHODIMP_ (ULONG) AddRef () { return underling->AddRef (); };
+	STDMETHODIMP_ (ULONG) Release ()
+	{
+		underling->AddRef ();
+		return underling->Release ();
+	};
+
+	IAccessible* underling;
+};
 
 //-----------------------------------------------------------------------------
 LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -689,83 +987,104 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 	SharedPointer<Win32Frame> lifeGuard (this);
 	IPlatformFrameCallback* pFrame = getFrame ();
 	bool doubleClick = false;
-	
-#define WM_POINTERDOWN                   0x0246
-#define WM_POINTERUP                     0x0247
-#define WM_POINTERROUTEDRELEASED         0x0253
-#define WM_POINTERCAPTURECHANGED         0x024C
 
+#	define WM_POINTERDOWN 0x0246
+#	define WM_POINTERUP 0x0247
+#	define WM_POINTERROUTEDRELEASED 0x0253
+#	define WM_POINTERCAPTURECHANGED 0x024C
+
+	// https://docs.microsoft.com/en-us/windows/win32/winauto/alternatives-to-dynamic-annotation
+	if (message == WM_GETOBJECT)
+	{
+		if ((DWORD)lParam == OBJID_CLIENT)
+		{
+			printf ("GOT OBJID_CLIENT\n");
+			auto defwp = DefWindowProc (hwnd, message, wParam, lParam);
+			IAccessible* under = 0;
+			if (defwp == 0)
+			{
+				auto res =
+					CreateStdAccessibleObject (hwnd, lParam, IID_IAccessible, (void**)&under);
+				printf ("CSAO %d %d\n", res, S_OK);
+			}
+			else
+			{
+			}
+			printf ("UNDER %d\n", under);
+			w32IAWrapper* wrapper = new w32IAWrapper (under);
+			return (LONG_PTR)wrapper;
+		}
+	}
 	switch (message)
 	{
-		case WM_POINTERDOWN:
-		{
+		case WM_POINTERDOWN: {
 			isTouchActive = true;
 			break;
 		}
 		case WM_POINTERUP:
 		case WM_POINTERROUTEDRELEASED:
-		case WM_POINTERCAPTURECHANGED:
-		{
+		case WM_POINTERCAPTURECHANGED: {
 			isTouchActive = false;
 			break;
 		}
-		case WM_MOUSEWHEEL:
-		{
+		case WM_MOUSEWHEEL: {
 			CButtonState buttons = 0;
-			if (GetAsyncKeyState (VK_SHIFT)   < 0)
+			if (GetAsyncKeyState (VK_SHIFT) < 0)
 				buttons |= kShift;
 			if (GetAsyncKeyState (VK_CONTROL) < 0)
 				buttons |= kControl;
-			if (GetAsyncKeyState (VK_MENU)    < 0)
+			if (GetAsyncKeyState (VK_MENU) < 0)
 				buttons |= kAlt;
-			short zDelta = (short) GET_WHEEL_DELTA_WPARAM(wParam);
-			POINT p {GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam)};
+			short zDelta = (short)GET_WHEEL_DELTA_WPARAM (wParam);
+			POINT p{GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam)};
 			ScreenToClient (windowHandle, &p);
 			CPoint where (p.x, p.y);
-			pFrame->platformOnMouseWheel (where, kMouseWheelAxisY, ((float)zDelta / WHEEL_DELTA), buttons);
+			pFrame->platformOnMouseWheel (where, kMouseWheelAxisY, ((float)zDelta / WHEEL_DELTA),
+										  buttons);
 			break;
 		}
-		case WM_MOUSEHWHEEL:	// new since vista
+		case WM_MOUSEHWHEEL: // new since vista
 		{
 			CButtonState buttons = 0;
-			if (GetAsyncKeyState (VK_SHIFT)   < 0)
+			if (GetAsyncKeyState (VK_SHIFT) < 0)
 				buttons |= kShift;
 			if (GetAsyncKeyState (VK_CONTROL) < 0)
 				buttons |= kControl;
-			if (GetAsyncKeyState (VK_MENU)    < 0)
+			if (GetAsyncKeyState (VK_MENU) < 0)
 				buttons |= kAlt;
-			short zDelta = (short) GET_WHEEL_DELTA_WPARAM(wParam);
-			POINT p {GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam)};
+			short zDelta = (short)GET_WHEEL_DELTA_WPARAM (wParam);
+			POINT p{GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam)};
 			ScreenToClient (windowHandle, &p);
 			CPoint where (p.x, p.y);
-			pFrame->platformOnMouseWheel (where, kMouseWheelAxisX, ((float)-zDelta / WHEEL_DELTA), buttons);
+			pFrame->platformOnMouseWheel (where, kMouseWheelAxisX, ((float)-zDelta / WHEEL_DELTA),
+										  buttons);
 			break;
 		}
-		case WM_CTLCOLOREDIT:
-		{
-			Win32TextEdit* win32TextEdit = (Win32TextEdit*)(LONG_PTR) GetWindowLongPtr ((HWND)lParam, GWLP_USERDATA);
+		case WM_CTLCOLOREDIT: {
+			Win32TextEdit* win32TextEdit =
+				(Win32TextEdit*)(LONG_PTR)GetWindowLongPtr ((HWND)lParam, GWLP_USERDATA);
 			if (win32TextEdit)
 			{
 				CColor fontColor = win32TextEdit->getTextEdit ()->platformGetFontColor ();
-				SetTextColor ((HDC) wParam, RGB (fontColor.red, fontColor.green, fontColor.blue));
-#if 1 // TODO: I don't know why the transparent part does not work anymore. Needs more investigation.
+				SetTextColor ((HDC)wParam, RGB (fontColor.red, fontColor.green, fontColor.blue));
+#	if 1 // TODO: I don't know why the transparent part does not work anymore. Needs more
+		  // investigation.
 				CColor backColor = win32TextEdit->getTextEdit ()->platformGetBackColor ();
-				SetBkColor ((HDC) wParam, RGB (backColor.red, backColor.green, backColor.blue));
-				return (LRESULT)(win32TextEdit->getPlatformBackColor ());
-#else
+				SetBkColor ((HDC)wParam, RGB (backColor.red, backColor.green, backColor.blue));
+				return (LRESULT) (win32TextEdit->getPlatformBackColor ());
+#	else
 				SetBkMode ((HDC)wParam, TRANSPARENT);
-				return (LRESULT) ::GetStockObject (HOLLOW_BRUSH);
-#endif
+				return (LRESULT)::GetStockObject (HOLLOW_BRUSH);
+#	endif
 			}
 			break;
 		}
-			
-		case WM_PAINT:
-		{
+
+		case WM_PAINT: {
 			paint (hwnd);
 			return 0;
 		}
-			
+
 		case WM_RBUTTONDBLCLK:
 		case WM_MBUTTONDBLCLK:
 		case WM_LBUTTONDBLCLK:
@@ -774,8 +1093,7 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 		case WM_RBUTTONDOWN:
 		case WM_MBUTTONDOWN:
 		case WM_LBUTTONDOWN:
-		case WM_XBUTTONDOWN:
-		{
+		case WM_XBUTTONDOWN: {
 			CButtonState buttons = 0;
 			if (wParam & MK_LBUTTON)
 				buttons |= kLButton;
@@ -791,23 +1109,23 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 				buttons |= kControl;
 			if (wParam & MK_SHIFT)
 				buttons |= kShift;
-			if (GetAsyncKeyState (VK_MENU)    < 0)
+			if (GetAsyncKeyState (VK_MENU) < 0)
 				buttons |= kAlt;
 			if (doubleClick)
 				buttons |= kDoubleClick;
-			HWND oldFocus = SetFocus(getPlatformWindow());
-			if(oldFocus != hwnd)
+			HWND oldFocus = SetFocus (getPlatformWindow ());
+			if (oldFocus != hwnd)
 				oldFocusWindow = oldFocus;
 			if (isTouchActive)
 				buttons |= kTouch;
 
 			CPoint where (GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam));
-			if (pFrame->platformOnMouseDown (where, buttons) == kMouseEventHandled && getPlatformWindow ())
+			if (pFrame->platformOnMouseDown (where, buttons) == kMouseEventHandled &&
+				getPlatformWindow ())
 				SetCapture (getPlatformWindow ());
 			return 0;
 		}
-		case WM_MOUSELEAVE:
-		{
+		case WM_MOUSELEAVE: {
 			CPoint where;
 			getCurrentMousePosition (where);
 			CButtonState buttons;
@@ -816,8 +1134,7 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 			mouseInside = false;
 			return 0;
 		}
-		case WM_MOUSEMOVE:
-		{
+		case WM_MOUSEMOVE: {
 			CButtonState buttons = 0;
 			if (wParam & MK_LBUTTON)
 				buttons |= kLButton;
@@ -854,8 +1171,7 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 		case WM_LBUTTONUP:
 		case WM_RBUTTONUP:
 		case WM_MBUTTONUP:
-		case WM_XBUTTONUP:
-		{
+		case WM_XBUTTONUP: {
 			CButtonState buttons = 0;
 			if (message & MK_LBUTTON || message == WM_LBUTTONUP)
 				buttons |= kLButton;
@@ -880,14 +1196,13 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 			ReleaseCapture ();
 			return 0;
 		}
-		case WM_KEYDOWN:
-		{
-			VstKeyCode key {};
-			if (GetAsyncKeyState (VK_SHIFT)   < 0)
+		case WM_KEYDOWN: {
+			VstKeyCode key{};
+			if (GetAsyncKeyState (VK_SHIFT) < 0)
 				key.modifier |= MODIFIER_SHIFT;
 			if (GetAsyncKeyState (VK_CONTROL) < 0)
 				key.modifier |= MODIFIER_CONTROL;
-			if (GetAsyncKeyState (VK_MENU)    < 0)
+			if (GetAsyncKeyState (VK_MENU) < 0)
 				key.modifier |= MODIFIER_ALTERNATE;
 			key.virt = translateWinVirtualKey (wParam);
 			key.character = MapVirtualKey (static_cast<UINT> (wParam), MAPVK_VK_TO_CHAR);
@@ -900,20 +1215,20 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			if (IsWindow (oldFocusWindow))
 			{
-				auto oldProc = reinterpret_cast<WNDPROC> (GetWindowLongPtr (oldFocusWindow, GWLP_WNDPROC));
+				auto oldProc =
+					reinterpret_cast<WNDPROC> (GetWindowLongPtr (oldFocusWindow, GWLP_WNDPROC));
 				if (oldProc && oldProc != WindowProc)
 					return CallWindowProc (oldProc, oldFocusWindow, message, wParam, lParam);
 			}
 			break;
 		}
-		case WM_KEYUP:
-		{
-			VstKeyCode key {};
-			if (GetAsyncKeyState (VK_SHIFT)   < 0)
+		case WM_KEYUP: {
+			VstKeyCode key{};
+			if (GetAsyncKeyState (VK_SHIFT) < 0)
 				key.modifier |= MODIFIER_SHIFT;
 			if (GetAsyncKeyState (VK_CONTROL) < 0)
 				key.modifier |= MODIFIER_CONTROL;
-			if (GetAsyncKeyState (VK_MENU)    < 0)
+			if (GetAsyncKeyState (VK_MENU) < 0)
 				key.modifier |= MODIFIER_ALTERNATE;
 			key.virt = translateWinVirtualKey (wParam);
 			key.character = MapVirtualKey (static_cast<UINT> (wParam), MAPVK_VK_TO_CHAR);
@@ -925,19 +1240,18 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			if (IsWindow (oldFocusWindow))
 			{
-				auto oldProc = reinterpret_cast<WNDPROC> (GetWindowLongPtr (oldFocusWindow, GWLP_WNDPROC));
+				auto oldProc =
+					reinterpret_cast<WNDPROC> (GetWindowLongPtr (oldFocusWindow, GWLP_WNDPROC));
 				if (oldProc && oldProc != WindowProc)
 					return CallWindowProc (oldProc, oldFocusWindow, message, wParam, lParam);
 			}
 			break;
 		}
-		case WM_SETFOCUS:
-		{
+		case WM_SETFOCUS: {
 			pFrame->platformOnActivate (true);
 			break;
 		}
-		case WM_KILLFOCUS:
-		{
+		case WM_KILLFOCUS: {
 			oldFocusWindow = 0;
 
 			HWND focusWindow = GetFocus ();
@@ -945,26 +1259,27 @@ LONG_PTR WINAPI Win32Frame::proc (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 				pFrame->platformOnActivate (false);
 			break;
 		}
-		case WM_DESTROY:
-		{
-#if DEBUG
-			DebugPrint ("This sometimes happens, only when we are currently processing a mouse down event and via a callback into the host the window gets destroyed. Otherwise this should never get called. We are the owner of the window and we are responsible of destroying it.\n");
-#endif
+		case WM_DESTROY: {
+#	if DEBUG
+			DebugPrint ("This sometimes happens, only when we are currently processing a mouse "
+						"down event and via a callback into the host the window gets "
+						"destroyed. Otherwise this should never get called. We are the owner "
+						"of the window and we are responsible of destroying it.\n");
+#	endif
 			if (parentWindow)
 				windowHandle = 0;
 			break;
 		}
-		case WM_ERASEBKGND:
-		{
+		case WM_ERASEBKGND: {
 			return 1; // don't draw background
 		}
-		case WM_COMMAND:
-		{
+		case WM_COMMAND: {
 			if (HIWORD (wParam) == EN_CHANGE)
 			{
 				// text control changes will be forwarded to the text control window proc
 				HWND controlWindow = (HWND)lParam;
-				WINDOWSPROC textEditWindowProc = (WINDOWSPROC)(LONG_PTR)GetWindowLongPtr (controlWindow, GWLP_WNDPROC);
+				WINDOWSPROC textEditWindowProc =
+					(WINDOWSPROC) (LONG_PTR)GetWindowLongPtr (controlWindow, GWLP_WNDPROC);
 				if (textEditWindowProc)
 				{
 					textEditWindowProc (controlWindow, WM_COMMAND, wParam, lParam);
